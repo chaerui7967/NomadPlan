@@ -20,6 +20,8 @@
 pip install -r requirements.txt
 python main.py
 ```
+## 카카오 지도 API 키 발급 (선택사항, 국내용)
+무료 api, 네이버나 구글 지도 api 사용하지 않을 때 장소 검색 정확도를 높이기위해 추가해주면 정확도가 올라갑니다.
 
 ## 네이버 지도 API 키 발급 (선택사항, 국내용)
 
