@@ -8,7 +8,7 @@ from app.styles import APP_STYLE
 
 def main() -> None:
     app = QApplication(sys.argv)
-    app.setApplicationName("TravelPlanner")
+    app.setApplicationName("NomadPlan")
     app.setStyleSheet(APP_STYLE)
     window = MainWindow()
     window.show()

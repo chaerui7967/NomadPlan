@@ -32,7 +32,7 @@ from .settings import AppSettings, SettingsDialog
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("여행 일정 플래너")
+        self.setWindowTitle("Nomad Plan - 여행 일정 플래너")
         self.resize(1000, 800)
 
         self.settings = AppSettings()

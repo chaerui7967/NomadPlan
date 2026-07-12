@@ -101,6 +101,16 @@ class StopDialog(QDialog):
         self.result_list = QListWidget()
         self.result_list.setMaximumHeight(160)
         self.result_list.itemDoubleClicked.connect(lambda _: None)
+        self.result_list.setStyleSheet("""
+            QListWidget::item:selected {
+                background-color: #0078D7;  /* 선택되었을 때의 배경색 (진한 파란색) */
+                color: white;               /* 선택되었을 때의 글자색 (흰색) */
+            }
+            QListWidget::item:hover {
+                background-color: #0078D7;  /* 마우스를 올렸을 때의 배경색 (연한 회색) */
+                color: black;               /* 마우스를 올렸을 때의 글자색 (검은색) */
+            }
+        """)
         layout.addWidget(self.result_list)
 
         options_row = QHBoxLayout()
