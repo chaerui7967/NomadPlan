@@ -19,7 +19,6 @@ __all__ = [
 CHOICE_OSM = "osm"
 CHOICE_NAVER = "naver"
 CHOICE_GOOGLE = "google"
-# KAKAO_KEY="d64387de212ef1029245ed8d940e222d"
 
 def resolve_provider(
     choice: str,
