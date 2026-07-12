@@ -43,7 +43,8 @@ class MainWindow(QMainWindow):
         root_layout = QVBoxLayout(central)
         root_layout.setContentsMargins(0, 0, 0, 0)
 
-        splitter = QSplitter(Qt.Vertical)
+        # splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(Qt.Horizontal)
         root_layout.addWidget(splitter)
 
         self.map_widget = MapWidget()
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
 
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
+        splitter.setSizes([650, 380])
 
         self._build_menu()
         self._update_provider_status()
