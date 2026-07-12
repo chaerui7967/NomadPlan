@@ -253,7 +253,13 @@ class MapWidget(QWebEngineView):
         """Stop 리스트 전체를 지도에 다시 그림 (마커 + 누적 경로)."""
         self.clear_all()
         for stop in stops:
-            self.add_marker(stop.lat, stop.lng, stop.name or stop.address)
+            label = stop.name or stop.address
+
+            if stop.note:
+                label += f" · {stop.note}"
+
+            self.add_marker(stop.lat, stop.lng, label)
+
         full_path: List[Tuple[float, float]] = []
         for stop in stops:
             if stop.path:

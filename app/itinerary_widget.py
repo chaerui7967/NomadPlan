@@ -2,7 +2,11 @@
 
 - 상단 '+ 일정 추가' 버튼 -> 주소/장소 검색 다이얼로그
 - 각 카드의 '수정' 버튼 -> 같은 다이얼로그를 기존 값으로 채워서 재사용
-- 목록의 각 항목: 순서, 이름/주소, 도착 예정시각, 이동수단, 이전 지점부터의 거리/소요시간
+- 각 카드 클릭 -> 해당 위치로 지도 이동/확대
+- 각 카드의 ▲▼ 버튼으로 순서 변경 (QListWidget의 drag 방식 대신 사용:
+  커스텀 위젯을 QListWidget에 넣으면 스크롤바 등장/소멸 시 sizeHint가
+  어긋나 카드가 잘리는 고질적인 문제가 있어, QScrollArea + QVBoxLayout으로
+  구성해 각 카드가 항상 자기 내용에 맞게 높이를 잡도록 함)
 - 항목 추가/수정/삭제/순서 변경 시 자동으로 구간별 경로를 재계산해서 지도에 반영
 """
 from __future__ import annotations
@@ -11,7 +15,6 @@ from typing import Callable, List, Optional
 
 from PySide6.QtCore import QTime, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -23,6 +26,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTimeEdit,
     QVBoxLayout,
     QWidget,
@@ -103,12 +107,12 @@ class StopDialog(QDialog):
         self.result_list.itemDoubleClicked.connect(lambda _: None)
         self.result_list.setStyleSheet("""
             QListWidget::item:selected {
-                background-color: #0078D7;  /* 선택되었을 때의 배경색 (진한 파란색) */
-                color: white;               /* 선택되었을 때의 글자색 (흰색) */
+                background-color: #0078D7;
+                color: white;
             }
             QListWidget::item:hover {
-                background-color: #0078D7;  /* 마우스를 올렸을 때의 배경색 (연한 회색) */
-                color: black;               /* 마우스를 올렸을 때의 글자색 (검은색) */
+                background-color: #cfe4fb;
+                color: black;
             }
         """)
         layout.addWidget(self.result_list)
@@ -176,7 +180,6 @@ class StopDialog(QDialog):
         elif self.existing_stop is None:
             QMessageBox.information(self, "장소 검색 필요", "장소를 검색하고 목록에서 선택하세요.")
             return
-        # existing_stop이 있고 새로 검색/선택하지 않았다면 기존 위치를 그대로 사용
         self.accept()
 
     def get_stop(self) -> Optional[Stop]:
@@ -205,28 +208,56 @@ class StopDialog(QDialog):
             note=note,
         )
         if self.existing_stop:
-            stop.id = self.existing_stop.id  # 기존 항목을 그대로 치환하기 위해 id 유지
+            stop.id = self.existing_stop.id
         return stop
 
 
 class StopRowWidget(QFrame):
-    """리스트의 한 행(1개 Stop)을 카드 형태로 표시하는 커스텀 위젯."""
+    """리스트의 한 항목(1개 Stop)을 카드 형태로 표시하는 커스텀 위젯.
+
+    QScrollArea 안의 QVBoxLayout에 직접 들어가기 때문에, 텍스트가 길어져도
+    (메모 추가 등) 항상 필요한 높이만큼 스스로 늘어나며 잘리지 않는다.
+    """
 
     remove_clicked = Signal()
     edit_clicked = Signal()
+    card_clicked = Signal()
+    move_up_clicked = Signal()
+    move_down_clicked = Signal()
 
-    def __init__(self, index: int, stop: Stop, parent=None):
+    def __init__(self, index: int, stop: Stop, is_first: bool, is_last: bool, parent=None):
         super().__init__(parent)
         self.setObjectName("stopCard")
+        self.setCursor(Qt.PointingHandCursor)
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(12, 10, 12, 10)
         outer.setSpacing(10)
 
+        # 순서 배지 + 위/아래 이동 버튼
+        order_col = QVBoxLayout()
+        order_col.setSpacing(2)
         order_label = QLabel(str(index + 1))
         order_label.setObjectName("orderBadge")
         order_label.setFixedSize(26, 26)
-        outer.addWidget(order_label)
+        order_col.addWidget(order_label)
+
+        move_row = QHBoxLayout()
+        move_row.setSpacing(2)
+        up_btn = QPushButton("▲")
+        up_btn.setObjectName("moveButton")
+        up_btn.setFixedSize(22, 20)
+        up_btn.setEnabled(not is_first)
+        up_btn.clicked.connect(self.move_up_clicked.emit)
+        down_btn = QPushButton("▼")
+        down_btn.setObjectName("moveButton")
+        down_btn.setFixedSize(22, 20)
+        down_btn.setEnabled(not is_last)
+        down_btn.clicked.connect(self.move_down_clicked.emit)
+        move_row.addWidget(up_btn)
+        move_row.addWidget(down_btn)
+        order_col.addLayout(move_row)
+        outer.addLayout(order_col)
 
         text_col = QVBoxLayout()
         text_col.setSpacing(3)
@@ -240,22 +271,28 @@ class StopRowWidget(QFrame):
         mode_badge = QLabel(_MODE_LABELS.get(stop.travel_mode, stop.travel_mode))
         mode_badge.setObjectName("modeBadge")
         color = MODE_COLORS.get(stop.travel_mode, "#666")
-        mode_badge.setStyleSheet(f"background-color: {color}; border-radius: 8px; padding: 2px 8px; "
-                                  f"font-size: 11px; font-weight: 600; color: white;")
+        mode_badge.setStyleSheet(
+            f"background-color: {color}; border-radius: 8px; padding: 2px 8px; "
+            f"font-size: 11px; font-weight: 600; color: white;"
+        )
         title_row.addWidget(mode_badge)
         title_row.addStretch(1)
         text_col.addLayout(title_row)
 
-        subtitle_parts = [stop.address]
+        subtitle_lines = [stop.address]
+        line2 = []
         if stop.arrival_time:
-            subtitle_parts.append(f"도착 {stop.arrival_time}")
+            line2.append(f"도착 {stop.arrival_time}")
         if index > 0:
-            subtitle_parts.append(
+            line2.append(
                 f"이전 지점에서 {format_distance(stop.distance_m)} · {format_duration(stop.duration_s)}"
             )
+        if line2:
+            subtitle_lines.append(" · ".join(line2))
         if stop.note:
-            subtitle_parts.append(f"메모: {stop.note}")
-        sub_label = QLabel(" · ".join(subtitle_parts))
+            subtitle_lines.append(f"메모: {stop.note}")
+
+        sub_label = QLabel("\n".join(subtitle_lines))
         sub_label.setObjectName("stopSubtitle")
         sub_label.setWordWrap(True)
         text_col.addWidget(sub_label)
@@ -277,12 +314,17 @@ class StopRowWidget(QFrame):
         btn_col.addWidget(remove_btn)
         outer.addLayout(btn_col)
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.card_clicked.emit()
+        super().mousePressEvent(event)
+
 
 class ItineraryWidget(QWidget):
     """일정 목록 + 추가/수정/삭제/순서 변경 + 구간 경로 재계산."""
 
-    #: 일정이 바뀔 때마다 (추가/수정/삭제/순서변경/경로재계산 후) 전체 stops 리스트와 함께 발생
     stops_changed = Signal(list)
+    stop_selected = Signal(object)
 
     def __init__(self, provider_getter: Callable[[], MapProvider], parent=None):
         super().__init__(parent)
@@ -297,19 +339,49 @@ class ItineraryWidget(QWidget):
         title.setObjectName("itineraryHeader")
         header.addWidget(title)
         header.addStretch(1)
+
+        reset_btn = QPushButton("초기화")
+        reset_btn.setObjectName("dangerButton")
+        reset_btn.clicked.connect(self.clear_all_stops)
+        header.addWidget(reset_btn)
+
         add_btn = QPushButton("+ 일정 추가")
         add_btn.setObjectName("primaryButton")
         add_btn.clicked.connect(self.open_add_dialog)
         header.addWidget(add_btn)
         layout.addLayout(header)
 
-        self.list_widget = QListWidget()
-        self.list_widget.setDragDropMode(QAbstractItemView.InternalMove)
-        self.list_widget.setSpacing(6)
-        self.list_widget.model().rowsMoved.connect(self._on_rows_moved)
-        layout.addWidget(self.list_widget)
+        # QListWidget 대신 QScrollArea + QVBoxLayout 사용:
+        # 커스텀 카드 위젯을 QListWidget에 넣으면 스크롤바 등장/소멸 시
+        # sizeHint 동기화가 어긋나 카드가 잘리는 문제가 있어, 각 카드가
+        # 스스로 필요한 높이를 갖도록 이 구조로 변경.
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.NoFrame)
+
+        self.cards_container = QWidget()
+        self.cards_layout = QVBoxLayout(self.cards_container)
+        self.cards_layout.setContentsMargins(0, 0, 4, 0)
+        self.cards_layout.setSpacing(6)
+        self.cards_layout.addStretch(1)  # 항상 마지막에 유지되는 spacer
+
+        self.scroll_area.setWidget(self.cards_container)
+        layout.addWidget(self.scroll_area)
 
     # ---- 공개 API ----
+
+    def clear_all_stops(self) -> None:
+        if not self.stops:
+            return
+        reply = QMessageBox.question(
+            self,
+            "일정 초기화",
+            "전체 일정을 삭제할까요? 되돌릴 수 없습니다.",
+            QMessageBox.Yes | QMessageBox.Cancel,
+        )
+        if reply == QMessageBox.Yes:
+            self.stops = []
+            self._recompute_and_refresh()
 
     def open_add_dialog(self) -> None:
         provider = self._provider_getter()
@@ -336,23 +408,20 @@ class ItineraryWidget(QWidget):
         self.stops = [s for s in self.stops if s.id != stop_id]
         self._recompute_and_refresh()
 
-    # ---- 내부 구현 ----
-
-    def _on_rows_moved(self, *args) -> None:
-        new_order: List[Stop] = []
-        by_id = {s.id: s for s in self.stops}
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            stop_id = item.data(Qt.UserRole)
-            if stop_id in by_id:
-                new_order.append(by_id[stop_id])
-        if len(new_order) == len(self.stops):
-            self.stops = new_order
+    def move_stop(self, stop_id: str, delta: int) -> None:
+        idx = next((i for i, s in enumerate(self.stops) if s.id == stop_id), None)
+        if idx is None:
+            return
+        new_idx = idx + delta
+        if 0 <= new_idx < len(self.stops):
+            self.stops[idx], self.stops[new_idx] = self.stops[new_idx], self.stops[idx]
             self._recompute_and_refresh()
+
+    # ---- 내부 구현 ----
 
     def _recompute_and_refresh(self) -> None:
         self._recompute_routes()
-        self._rebuild_list()
+        self._rebuild_cards()
         self.stops_changed.emit(self.stops)
 
     def _recompute_routes(self) -> None:
@@ -379,23 +448,34 @@ class ItineraryWidget(QWidget):
                     self, "경로 계산 실패", f"'{prev.name}' -> '{stop.name}' 구간: {e}"
                 )
 
-    def _rebuild_list(self) -> None:
-        self.list_widget.blockSignals(True)
-        self.list_widget.clear()
+    def _rebuild_cards(self) -> None:
+        # 마지막 stretch item(항상 count-1 위치)을 제외하고 기존 카드 위젯 제거
+        while self.cards_layout.count() > 1:
+            item = self.cards_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        n = len(self.stops)
         for i, stop in enumerate(self.stops):
-            item = QListWidgetItem()
-            item.setData(Qt.UserRole, stop.id)
-            row_widget = StopRowWidget(i, stop)
+            row_widget = StopRowWidget(i, stop, is_first=(i == 0), is_last=(i == n - 1))
             row_widget.remove_clicked.connect(
                 lambda checked=False, sid=stop.id: self.remove_stop(sid)
             )
             row_widget.edit_clicked.connect(
                 lambda checked=False, sid=stop.id: self.open_edit_dialog(sid)
             )
-            item.setSizeHint(row_widget.sizeHint())
-            self.list_widget.addItem(item)
-            self.list_widget.setItemWidget(item, row_widget)
-        self.list_widget.blockSignals(False)
+            row_widget.card_clicked.connect(
+                lambda checked=False, s=stop: self.stop_selected.emit(s)
+            )
+            row_widget.move_up_clicked.connect(
+                lambda checked=False, sid=stop.id: self.move_stop(sid, -1)
+            )
+            row_widget.move_down_clicked.connect(
+                lambda checked=False, sid=stop.id: self.move_stop(sid, +1)
+            )
+            # addStretch가 마지막(count-1)에 있으므로 그 앞에 순서대로 삽입
+            self.cards_layout.insertWidget(self.cards_layout.count() - 1, row_widget)
 
     def set_provider_changed(self) -> None:
         """설정에서 provider가 바뀌었을 때 호출: 기존 좌표는 유지한 채 경로만 재계산."""

@@ -21,6 +21,17 @@ QMainWindow, QWidget {{
     color: #1f2430;
 }}
 
+QPushButton#moveButton {{
+    padding: 0px;
+    font-size: 10px;
+    background-color: #eef0f4;
+}}
+
+QPushButton#moveButton:disabled {{
+    color: #c7cbd1;
+    background-color: #f5f6f8;
+}}
+
 QListWidget {{
     background-color: transparent;
     border: none;
