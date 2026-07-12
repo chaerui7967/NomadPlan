@@ -1,8 +1,8 @@
 """앱 설정 저장/불러오기 (QSettings 사용, OS별 표준 위치에 자동 저장됨).
 
-macOS: ~/Library/Preferences/com.travelplanner.TravelPlanner.plist
+macOS: ~/Library/Preferences/com.nomadplan.NomadPlan.plist
 Windows: 레지스트리
-Linux: ~/.config/TravelPlanner/TravelPlanner.conf
+Linux: ~/.config/NomadPlan/NomadPlan.conf
 """
 from __future__ import annotations
 
@@ -21,13 +21,14 @@ from PySide6.QtWidgets import (
 
 from .providers import CHOICE_GOOGLE, CHOICE_NAVER, CHOICE_OSM
 
-ORG_NAME = "TravelPlanner"
-APP_NAME = "TravelPlanner"
+ORG_NAME = "NomadPlan"
+APP_NAME = "NomadPlan"
 
 KEY_PROVIDER_CHOICE = "provider/choice"
 KEY_NAVER_CLIENT_ID = "naver/client_id"
 KEY_NAVER_CLIENT_SECRET = "naver/client_secret"
 KEY_GOOGLE_API_KEY = "google/api_key"
+KEY_KAKAO_REST_KEY = "kakao/rest_key"
 
 
 class AppSettings:
@@ -67,6 +68,15 @@ class AppSettings:
     @google_api_key.setter
     def google_api_key(self, value: str) -> None:
         self._qs.setValue(KEY_GOOGLE_API_KEY, value)
+
+    # 📌 카카오 REST API 키 Getter / Setter 추가
+    @property
+    def kakao_rest_key(self) -> str:
+        return self._qs.value(KEY_KAKAO_REST_KEY, "", type=str)
+
+    @kakao_rest_key.setter
+    def kakao_rest_key(self, value: str) -> None:
+        self._qs.setValue(KEY_KAKAO_REST_KEY, value)
 
     def sync(self) -> None:
         self._qs.sync()
@@ -146,6 +156,28 @@ class SettingsDialog(QDialog):
 
         self.provider_combo.currentIndexChanged.connect(self.stack.setCurrentIndex)
 
+        # -----------------------------------------------------------------
+        # 📌 4. 공통 설정 영역 (카카오 키 상시 고정)
+        # -----------------------------------------------------------------
+        # 가로 구분선 하나 그어주면 UI가 더 깔끔해집니다.
+        line = QWidget()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background-color: #e3e5e9; margin: 10px 0px;")
+        layout.addWidget(line)
+
+        common_form = QFormLayout()
+        self.kakao_rest_key_edit = QLineEdit(self.settings.kakao_rest_key)
+        self.kakao_rest_key_edit.setPlaceholderText("Kakao REST API Key (선택사항)")
+        self.kakao_rest_key_edit.setEchoMode(QLineEdit.Password)
+        
+        kakao_note = QLabel("※ 무료(OSM) 지도 사용 시 국내 장소(POI) 검색 보완용으로 상시 활용됩니다.")
+        kakao_note.setStyleSheet("color: #6b7280; font-size: 11px;")
+        
+        common_form.addRow("카카오 API 키", self.kakao_rest_key_edit)
+        common_form.addRow("", kakao_note)
+        layout.addLayout(common_form)
+        # -----------------------------------------------------------------
+
         # 저장된 선택값으로 초기화
         current_choice = self.settings.provider_choice
         idx = next((i for i, (k, _) in enumerate(_CHOICES) if k == current_choice), 0)
@@ -162,5 +194,6 @@ class SettingsDialog(QDialog):
         self.settings.naver_client_id = self.naver_client_id_edit.text().strip()
         self.settings.naver_client_secret = self.naver_client_secret_edit.text().strip()
         self.settings.google_api_key = self.google_api_key_edit.text().strip()
+        self.settings.kakao_rest_key = self.kakao_rest_key_edit.text().strip()
         self.settings.sync()
         self.accept()

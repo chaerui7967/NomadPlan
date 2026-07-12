@@ -73,6 +73,7 @@ class MainWindow(QMainWindow):
             self.settings.naver_client_id,
             self.settings.naver_client_secret,
             self.settings.google_api_key,
+            self.settings.kakao_rest_key,
         )
         if warning and notify_fallback:
             QMessageBox.warning(self, "지도 제공자 안내", warning)
